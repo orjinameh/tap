@@ -26,15 +26,16 @@ export default function Home() {
       {/* Hero */}
       <section className="max-w-6xl mx-auto px-6 py-20 text-center">
         <div className="inline-block px-3 py-1 bg-violet-500/10 text-violet-400 text-xs font-medium rounded-full mb-6 border border-violet-500/20">
-          Agentic Commerce Infrastructure
+          Brainwave 2026 — x402 Track
         </div>
         <h1 className="text-5xl md:text-6xl font-bold text-white mb-6">
-          Give your agents
+          Pay once.
           <br />
-          <span className="text-violet-400">spending power.</span>
+          <span className="text-violet-400">Use AI不限.</span>
         </h1>
         <p className="text-lg text-zinc-400 max-w-2xl mx-auto mb-8">
-          Create wallets for AI agents. Set spending policies. Let them pay for x402 services autonomously — within limits you control.
+          Give your AI agents 30 minutes of unlimited access to premium-quality AI services.
+          Pick only what you need. Fewer services = lower price. No per-call fees.
         </p>
         <div className="flex items-center justify-center gap-4">
           <a
@@ -61,22 +62,22 @@ export default function Home() {
               <div className="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center mb-4">
                 <span className="text-red-400 text-lg">!</span>
               </div>
-              <h3 className="text-sm font-semibold text-white mb-2">Agents can&apos;t pay</h3>
-              <p className="text-xs text-zinc-500">AI agents need to transact on the web but have no way to hold or spend money autonomously.</p>
+              <h3 className="text-sm font-semibold text-white mb-2">AI is paywalled</h3>
+              <p className="text-xs text-zinc-500">Premium AI costs $15-20/month per model. Agents that need multiple services face stacked subscriptions.</p>
             </div>
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
               <div className="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center mb-4">
                 <span className="text-red-400 text-lg">!</span>
               </div>
-              <h3 className="text-sm font-semibold text-white mb-2">No spending controls</h3>
-              <p className="text-xs text-zinc-500">Giving agents full wallet access is dangerous. They could drain funds or make unauthorized purchases.</p>
+              <h3 className="text-sm font-semibold text-white mb-2">Agents can&apos;t pay</h3>
+              <p className="text-xs text-zinc-500">AI agents have no wallets, no payment method, no way to autonomously purchase services they need.</p>
             </div>
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
               <div className="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center mb-4">
                 <span className="text-red-400 text-lg">!</span>
               </div>
               <h3 className="text-sm font-semibold text-white mb-2">No visibility</h3>
-              <p className="text-xs text-zinc-500">No way to track what agents are spending, where, or enforce budgets across services.</p>
+              <p className="text-xs text-zinc-500">No way to track what agents are spending, where, or enforce time-based access across services.</p>
             </div>
           </div>
         </div>
@@ -89,24 +90,24 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
               <div className="w-10 h-10 bg-violet-500/10 rounded-lg flex items-center justify-center mb-4">
+                <span className="text-violet-400 text-lg">+</span>
+              </div>
+              <h3 className="text-sm font-semibold text-white mb-2">Create an Agent</h3>
+              <p className="text-xs text-zinc-500">Pick the AI services your agent needs. Fewer services = cheaper activation. No bloat.</p>
+            </div>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+              <div className="w-10 h-10 bg-violet-500/10 rounded-lg flex items-center justify-center mb-4">
                 <span className="text-violet-400 text-lg">$</span>
               </div>
-              <h3 className="text-sm font-semibold text-white mb-2">Create Agent Wallets</h3>
-              <p className="text-xs text-zinc-500">Each agent gets its own wallet address. Fund it with USDC on Base Sepolia.</p>
+              <h3 className="text-sm font-semibold text-white mb-2">Buy Time</h3>
+              <p className="text-xs text-zinc-500">Pay once per activation — $0.01 per service. Get 30 minutes of unlimited AI access. No per-call fees.</p>
             </div>
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
               <div className="w-10 h-10 bg-violet-500/10 rounded-lg flex items-center justify-center mb-4">
-                <span className="text-violet-400 text-lg">#</span>
+                <span className="text-violet-400 text-lg">⚡</span>
               </div>
-              <h3 className="text-sm font-semibold text-white mb-2">Set Spending Policies</h3>
-              <p className="text-xs text-zinc-500">Max per transaction, per day, per week. Allowlist or blocklist specific services.</p>
-            </div>
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-              <div className="w-10 h-10 bg-violet-500/10 rounded-lg flex items-center justify-center mb-4">
-                <span className="text-violet-400 text-lg">✓</span>
-              </div>
-              <h3 className="text-sm font-semibold text-white mb-2">Enforce & Track</h3>
-              <p className="text-xs text-zinc-500">Policy engine blocks unauthorized spending. Dashboard shows all receipts and violations.</p>
+              <h3 className="text-sm font-semibold text-white mb-2">Run Unlimited</h3>
+              <p className="text-xs text-zinc-500">While active, your agent calls any enabled service as many times as it wants. Premium quality, fraction of the cost.</p>
             </div>
           </div>
         </div>
@@ -116,13 +117,12 @@ export default function Home() {
       <section id="how-it-works" className="border-t border-zinc-800 py-20">
         <div className="max-w-6xl mx-auto px-6">
           <h2 className="text-2xl font-bold text-white mb-8 text-center">How It Works</h2>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {[
-              { step: "1", title: "Create Agent", desc: "Name it, set policies" },
-              { step: "2", title: "Fund Wallet", desc: "Send USDC to agent address" },
-              { step: "3", title: "Agent Calls API", desc: "Pays via x402 automatically" },
-              { step: "4", title: "Policy Check", desc: "Engine validates the spend" },
-              { step: "5", title: "Receipt Logged", desc: "On-chain tx tracked" },
+              { step: "1", title: "Create Agent", desc: "Pick services, set a name" },
+              { step: "2", title: "Buy Time", desc: "Pay once for 30 min access" },
+              { step: "3", title: "Run Services", desc: "Unlimited calls while active" },
+              { step: "4", title: "Renew or Expire", desc: "Buy again, or let it expire" },
             ].map((s) => (
               <div key={s.step} className="text-center">
                 <div className="w-10 h-10 bg-violet-500/10 text-violet-400 rounded-full flex items-center justify-center mx-auto mb-3 text-sm font-bold border border-violet-500/20">
@@ -136,11 +136,36 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Pricing */}
+      <section className="border-t border-zinc-800 py-20">
+        <div className="max-w-6xl mx-auto px-6 text-center">
+          <h2 className="text-2xl font-bold text-white mb-4">Simple Pricing</h2>
+          <p className="text-sm text-zinc-500 mb-8">Pay per activation. No subscriptions. No per-call fees.</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl mx-auto">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+              <p className="text-xs text-zinc-500 mb-2">1 Service</p>
+              <p className="text-3xl font-bold text-white">$0.01</p>
+              <p className="text-xs text-zinc-600 mt-2">30 min unlimited</p>
+            </div>
+            <div className="bg-zinc-900 border border-violet-500/30 rounded-xl p-6">
+              <p className="text-xs text-violet-400 mb-2">3 Services</p>
+              <p className="text-3xl font-bold text-white">$0.03</p>
+              <p className="text-xs text-zinc-600 mt-2">30 min unlimited</p>
+            </div>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+              <p className="text-xs text-zinc-500 mb-2">All 6 Services</p>
+              <p className="text-3xl font-bold text-white">$0.06</p>
+              <p className="text-xs text-zinc-600 mt-2">30 min unlimited</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Tech */}
       <section className="border-t border-zinc-800 py-20">
         <div className="max-w-6xl mx-auto px-6 text-center">
           <h2 className="text-2xl font-bold text-white mb-6">Built With</h2>
-          <div className="flex items-center justify-center gap-6 text-sm text-zinc-500">
+          <div className="flex items-center justify-center gap-6 text-sm text-zinc-500 flex-wrap">
             <span className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 bg-violet-500 rounded-full"></span>
               x402 Protocol
@@ -151,15 +176,19 @@ export default function Home() {
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 bg-violet-500 rounded-full"></span>
+              Gemini 2.0 Flash
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-violet-500 rounded-full"></span>
+              MCP Server
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-violet-500 rounded-full"></span>
               Next.js 16
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 bg-violet-500 rounded-full"></span>
-              USDC
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 bg-violet-500 rounded-full"></span>
-              MetaMask
+              Premium Prompt Engineering
             </span>
           </div>
         </div>
