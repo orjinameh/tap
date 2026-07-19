@@ -53,6 +53,9 @@ export default function Dashboard() {
   const [newAllowedServices, setNewAllowedServices] = useState<string[]>([]);
   const [newBlockedServices, setNewBlockedServices] = useState<string[]>([]);
   const [testService, setTestService] = useState("summarize");
+  const [testInput, setTestInput] = useState("");
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<{ result: string; amount: number; txHash: string; service: string; serviceCount: number } | null>(null);
   const [address, setAddress] = useState<string | null>(null);
 
   useEffect(() => {
@@ -346,36 +349,72 @@ export default function Dashboard() {
                     <h3 className="text-lg font-semibold text-white">{selectedAgent.name}</h3>
                     <p className="text-xs text-zinc-500 font-mono">{selectedAgent.address}</p>
                   </div>
-                  <div className="flex gap-2 items-center">
+                </div>
+
+                {/* Run Service */}
+                <div className="mb-6 bg-zinc-800 rounded-lg p-4">
+                  <h4 className="text-sm font-medium text-zinc-400 mb-3">Run Service</h4>
+                  <div className="flex gap-2 mb-3">
                     <select
                       value={testService}
                       onChange={(e) => setTestService(e.target.value)}
-                      className="px-2 py-1.5 bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs rounded-lg"
+                      className="px-2 py-1.5 bg-zinc-900 border border-zinc-700 text-zinc-300 text-xs rounded-lg"
                     >
                       {SERVICES.map((s) => (
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
+                    <input
+                      value={testInput}
+                      onChange={(e) => setTestInput(e.target.value)}
+                      placeholder={testService === "code-review" ? "Paste code here..." : "Enter text to process..."}
+                      className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500"
+                    />
                     <button
                       onClick={async () => {
-                        const token = localStorage.getItem("tap_token");
-                        const res = await fetch(`/api/agents/${selectedAgent!.id}/pay`, {
-                          method: "POST",
-                          headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${token}`,
-                          },
-                          body: JSON.stringify({ service: testService, input: "Test payment" }),
-                        });
-                        const data = await res.json();
-                        alert(res.ok ? `Payment sent! TX: ${data.txHash?.slice(0, 18)}...` : `Failed: ${data.error}`);
-                        if (res.ok) loadAgents();
+                        if (!testInput) return;
+                        setTestLoading(true);
+                        setTestResult(null);
+                        try {
+                          const token = localStorage.getItem("tap_token");
+                          const res = await fetch(`/api/agents/${selectedAgent!.id}/pay`, {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${token}`,
+                            },
+                            body: JSON.stringify({ service: testService, input: testInput }),
+                          });
+                          const data = await res.json();
+                          if (res.ok) {
+                            setTestResult({ result: data.result, amount: data.amount, txHash: data.txHash, service: data.service, serviceCount: data.serviceCount });
+                            loadAgents();
+                            selectAgent(selectedAgent!);
+                          } else {
+                            setTestResult(null);
+                            alert(`Failed: ${data.error}${data.reason ? " — " + data.reason : ""}`);
+                          }
+                        } finally {
+                          setTestLoading(false);
+                        }
                       }}
-                      className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs rounded-lg transition-colors"
+                      disabled={!testInput || testLoading}
+                      className="px-4 py-1.5 bg-violet-600 hover:bg-violet-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-xs font-medium rounded-lg transition-colors whitespace-nowrap"
                     >
-                      Test Payment
+                      {testLoading ? "Running..." : "Pay & Run"}
                     </button>
                   </div>
+                  {testResult && (
+                    <div className="bg-zinc-900 rounded-lg p-3 border border-zinc-700">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-zinc-500">
+                          ${testResult.amount} USDC · {testResult.service} · {testResult.serviceCount} service{testResult.serviceCount !== 1 ? "s" : ""} used
+                        </span>
+                        <span className="text-xs text-zinc-600 font-mono">{testResult.txHash.slice(0, 14)}...</span>
+                      </div>
+                      <p className="text-sm text-zinc-300 whitespace-pre-wrap">{testResult.result}</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Services */}
