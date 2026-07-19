@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aiGenerate } from "@/lib/ai";
+import { checkSession } from "@/lib/check-session";
 
 export async function POST(request: NextRequest) {
+  const denied = checkSession(request);
+  if (denied) return denied;
+
   try {
     const { prompt, type } = await request.json();
     if (!prompt) {
@@ -12,7 +16,6 @@ export async function POST(request: NextRequest) {
       result: generated,
       api: "generate",
       type: type || "blog post",
-      price: "$0.02 USDC",
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aiTranslate } from "@/lib/ai";
+import { checkSession } from "@/lib/check-session";
 
 export async function POST(request: NextRequest) {
+  const denied = checkSession(request);
+  if (denied) return denied;
+
   try {
     const { text, targetLang } = await request.json();
     if (!text || !targetLang) {
@@ -12,7 +16,6 @@ export async function POST(request: NextRequest) {
       result: translated,
       api: "translate",
       targetLang,
-      price: "$0.01 USDC",
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

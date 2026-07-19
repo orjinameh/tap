@@ -11,34 +11,14 @@ const resourceServer = new x402ResourceServer(facilitatorClient)
 
 export default paymentProxy(
   {
-    "/api/ai/summarize": {
-      accepts: { scheme: "exact", price: "$0.01", network: "eip155:84532", payTo },
-      description: "AI Text Summarization",
-    },
-    "/api/ai/translate": {
-      accepts: { scheme: "exact", price: "$0.01", network: "eip155:84532", payTo },
-      description: "AI Translation",
-    },
-    "/api/ai/code-review": {
+    "/api/auth/session": {
       accepts: { scheme: "exact", price: "$0.05", network: "eip155:84532", payTo },
-      description: "AI Code Review",
-    },
-    "/api/ai/generate": {
-      accepts: { scheme: "exact", price: "$0.02", network: "eip155:84532", payTo },
-      description: "AI Content Generation",
-    },
-    "/api/ai/explain": {
-      accepts: { scheme: "exact", price: "$0.01", network: "eip155:84532", payTo },
-      description: "AI Code/Text Explanation",
-    },
-    "/api/ai/classify": {
-      accepts: { scheme: "exact", price: "$0.005", network: "eip155:84532", payTo },
-      description: "AI Text Classification",
+      description: "30 minutes unlimited API access",
     },
   },
   resourceServer,
 );
 
 export const config = {
-  matcher: ["/api/ai/:path*"],
+  matcher: ["/api/auth/session"],
 };

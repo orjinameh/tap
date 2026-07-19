@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aiExplain } from "@/lib/ai";
+import { checkSession } from "@/lib/check-session";
 
 export async function POST(request: NextRequest) {
+  const denied = checkSession(request);
+  if (denied) return denied;
+
   try {
     const { text } = await request.json();
     if (!text) {
@@ -11,7 +15,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       result: explanation,
       api: "explain",
-      price: "$0.01 USDC",
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
