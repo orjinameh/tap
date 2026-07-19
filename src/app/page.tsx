@@ -62,15 +62,15 @@ export default function Home() {
               <div className="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center mb-4">
                 <span className="text-red-400 text-lg">!</span>
               </div>
-              <h3 className="text-sm font-semibold text-white mb-2">AI is paywalled</h3>
+              <h3 className="text-sm font-semibold text-white mb-2">AI is paywalled per model</h3>
               <p className="text-xs text-zinc-500">Premium AI costs $15-20/month per model. Agents that need multiple services face stacked subscriptions.</p>
             </div>
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
               <div className="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center mb-4">
                 <span className="text-red-400 text-lg">!</span>
               </div>
-              <h3 className="text-sm font-semibold text-white mb-2">Agents can&apos;t pay</h3>
-              <p className="text-xs text-zinc-500">AI agents have no wallets, no payment method, no way to autonomously purchase services they need.</p>
+              <h3 className="text-sm font-semibold text-white mb-2">Agents have no payment layer</h3>
+              <p className="text-xs text-zinc-500">No infrastructure for agents to autonomously purchase the AI services they need. Humans must subscribe for them.</p>
             </div>
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
               <div className="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center mb-4">
