@@ -1,87 +1,80 @@
-# Tap — x402-Powered AI API Marketplace
+# AgentVault — Agent Payment Infrastructure for x402
 
-> **Pay-per-use AI APIs. No API keys. No subscriptions. Just USDC micropayments via x402.**
+> **Give your agents spending power. Set policies. Let them pay autonomously — within limits you control.**
 
-Built for Brainwave 2026 — X402 Blockchain Track.
+Built for Brainwave 2026 — Track 2: Agentic Commerce & Payment Infrastructure.
 
-## What is Tap?
+## What is AgentVault?
 
-Tap is an AI API marketplace where developers and AI agents pay per request using the x402 payment protocol. Every API call settles a USDC micropayment on Base Sepolia, and the caller gets a verifiable on-chain receipt.
+AgentVault is infrastructure that enables AI agents to participate in the x402 economy. Developers create agent wallets, set spending policies (per-transaction, daily, weekly limits), and agents autonomously pay for x402 services within those limits.
 
-## How it works
+## The Problem
 
-```
-1. Client sends request to /api/ai/summarize
-2. x402 middleware intercepts → returns 402 + PaymentRequired
-3. Client wallet signs EIP-712 USDC transfer
-4. Client retries with X-PAYMENT header
-5. Facilitator verifies + settles on-chain
-6. Server returns 200 + PAYMENT-RESPONSE receipt
-```
+- AI agents need to transact on the web but have no way to hold or spend money
+- Giving agents full wallet access is dangerous — they could drain funds
+- No way to track what agents are spending or enforce budgets
 
-## Available APIs
+## The Solution
 
-| Endpoint | Price | Description |
+1. **Create Agent Wallets** — each agent gets its own address
+2. **Set Spending Policies** — max per tx, per day, per week, allowlist/blocklist services
+3. **Agents Pay Autonomously** — policy engine validates every payment
+4. **Track Everything** — dashboard shows all receipts and policy violations
+
+## API Endpoints
+
+| Endpoint | Method | Description |
 |---|---|---|
-| `POST /api/ai/summarize` | $0.01 | AI Text Summarization |
-| `POST /api/ai/translate` | $0.01 | AI Translation |
-| `POST /api/ai/code-review` | $0.05 | AI Code Review |
-| `POST /api/ai/generate` | $0.02 | AI Content Generation |
-| `POST /api/ai/explain` | $0.01 | AI Code/Text Explanation |
-| `POST /api/ai/classify` | $0.005 | AI Text Classification |
+| `/api/agents` | GET | List your agents |
+| `/api/agents` | POST | Create a new agent |
+| `/api/agents/:id` | GET | Get agent details + stats |
+| `/api/agents/:id` | PATCH | Update agent policy |
+| `/api/agents/:id` | DELETE | Deactivate agent |
+| `/api/agents/:id/fund` | POST | Fund agent wallet |
+| `/api/agents/:id/pay` | POST | Agent makes x402 payment |
+| `/api/agents/:id/receipts` | GET | Get spending receipts |
+| `/mcp/sse` | GET | MCP SSE endpoint |
 
 ## Tech Stack
 
 - **Next.js 16** (App Router)
 - **@x402/next** (official x402 middleware)
-- **@x402/evm** (EVM chain support)
-- **Google Gemini** (AI inference)
+- **ethers.js v6** (wallet creation)
 - **Base Sepolia** (testnet)
 - **MetaMask** (wallet auth)
 
 ## Quick Start
 
 ```bash
-# Install dependencies
 npm install
-
-# Set up environment
 cp .env.example .env
 # Edit .env with your keys
-
-# Run development server
 npm run dev
-
-# Build for production
-npm run build
 ```
 
 ## Environment Variables
 
 ```env
-# x402
 PAYMENT_RECIPIENT_ADDRESS=0x...
 NEXT_PUBLIC_FACILITATOR_URL=https://facilitator.x402.org
-
-# AI
 GEMINI_API_KEY=...
-
-# Auth
 JWT_SECRET=...
-
-# Base Sepolia
-NEXT_PUBLIC_CHAIN_ID=84532
-NEXT_PUBLIC_USDC_ADDRESS=0x036CbD53842c5426634c4923a9dFCA9f03Cc8540
 ```
 
-## MCP Server
+## How the Policy Engine Works
 
-Tap exposes an MCP SSE endpoint at `/mcp/sse` for AI agent discovery:
+Every payment goes through the policy engine:
 
-- `list_apis` — Discover all available APIs and their prices
-- `call_api` — Call any API (requires x402 payment)
+1. Check if agent is active
+2. Check per-transaction limit
+3. Check daily spend total
+4. Check weekly spend total
+5. Check service allowlist (if set)
+6. Check service blocklist
+7. Only if ALL checks pass → payment proceeds
+
+Violations are logged and visible in the dashboard.
 
 ## License
 
 MIT
-# tap
