@@ -3,63 +3,64 @@
 import { useState, useEffect, useCallback } from "react";
 import WalletButton from "@/components/WalletButton";
 
-const SERVICES = ["summarize", "translate", "code-review", "generate", "explain", "classify"];
+const CATEGORIES = ["summarize", "translate", "code-review", "generate", "explain", "classify"];
 
-interface Agent {
+interface Service {
   id: string;
   name: string;
-  address: string;
-  services: string[];
-  isActive: boolean;
-  activatedAt: string | null;
-  expiresAt: string | null;
-  remainingMs: number;
-  totalSpent: number;
+  description: string;
+  category: string;
+  price: number;
+  walletAddress: string;
+  creatorAddress: string;
   createdAt: string;
-  stats?: { totalSpent: number; totalTransactions: number };
-}
-
-function formatMs(ms: number): string {
-  if (ms <= 0) return "Expired";
-  const m = Math.floor(ms / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  return `${m}m ${s}s`;
-}
-
-function getPrice(serviceCount: number): number {
-  return Math.round(0.05 * serviceCount * 100) / 100;
+  stats: {
+    totalCalls: number;
+    todayCalls: number;
+    totalEarnings: number;
+    todayEarnings: number;
+    uniqueCallers: number;
+  };
+  recentCalls?: Array<{
+    id: string;
+    callerAddress: string;
+    input: string;
+    amount: number;
+    txHash: string;
+    timestamp: string;
+  }>;
 }
 
 export default function Dashboard() {
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [services, setServices] = useState<Service[]>([]);
+  const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newServices, setNewServices] = useState<string[]>([]);
+  const [newDesc, setNewDesc] = useState("");
+  const [newCategory, setNewCategory] = useState("summarize");
   const [address, setAddress] = useState<string | null>(null);
-  const [activating, setActivating] = useState(false);
 
-  const loadAgents = useCallback(async () => {
+  const loadServices = useCallback(async () => {
     try {
       const token = localStorage.getItem("tap_token");
-      const res = await fetch("/api/agents", {
+      const res = await fetch("/api/services", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
-        setAgents(data.agents);
+        setServices(data.services);
       }
     } catch {}
   }, []);
 
-  const selectAgent = useCallback(async (agent: Agent) => {
+  const selectService = useCallback(async (svc: Service) => {
     const token = localStorage.getItem("tap_token");
-    const res = await fetch(`/api/agents/${agent.id}`, {
+    const res = await fetch(`/api/services/${svc.id}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.ok) {
       const data = await res.json();
-      setSelectedAgent(data);
+      setSelectedService(data);
     }
   }, []);
 
@@ -67,63 +68,31 @@ export default function Dashboard() {
     const saved = localStorage.getItem("tap_address");
     if (saved) {
       setAddress(saved);
-      loadAgents();
+      loadServices();
     }
-  }, [loadAgents]);
+  }, [loadServices]);
 
-  useEffect(() => {
-    if (!selectedAgent) return;
-    const interval = setInterval(() => {
-      setSelectedAgent((prev) => {
-        if (!prev || !prev.expiresAt) return prev;
-        const remainingMs = Math.max(0, new Date(prev.expiresAt).getTime() - Date.now());
-        return { ...prev, remainingMs, isActive: remainingMs > 0 };
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [selectedAgent?.id]);
-
-  const createAgent = async () => {
-    if (!newName || newServices.length === 0) return;
+  const createService = async () => {
+    if (!newName || !newDesc) return;
     const token = localStorage.getItem("tap_token");
-    const res = await fetch("/api/agents", {
+    const res = await fetch("/api/services", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ name: newName, services: newServices }),
+      body: JSON.stringify({ name: newName, description: newDesc, category: newCategory }),
     });
     if (res.ok) {
       setShowCreate(false);
       setNewName("");
-      setNewServices([]);
-      loadAgents();
+      setNewDesc("");
+      loadServices();
     }
   };
 
-  const activateAgent = async (agentId: string) => {
-    setActivating(true);
-    try {
-      const token = localStorage.getItem("tap_token");
-      const res = await fetch(`/api/agents/${agentId}/pay`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        loadAgents();
-        selectAgent(selectedAgent!);
-      } else {
-        alert(`Activation failed: ${data.error}`);
-      }
-    } finally {
-      setActivating(false);
-    }
-  };
+  const totalEarnings = services.reduce((sum, s) => sum + (s.stats?.totalEarnings || 0), 0);
+  const totalCalls = services.reduce((sum, s) => sum + (s.stats?.totalCalls || 0), 0);
 
   return (
     <div className="min-h-screen bg-zinc-950">
@@ -144,89 +113,97 @@ export default function Dashboard() {
       <main className="max-w-6xl mx-auto px-6 py-12">
         {!address ? (
           <div className="text-center py-20">
-            <p className="text-zinc-500 text-lg">Connect your wallet to manage agent spending</p>
+            <p className="text-zinc-500 text-lg">Connect your wallet to manage services</p>
           </div>
         ) : (
           <>
-            {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Agents</p>
-                <p className="text-3xl font-bold text-white">{agents.length}</p>
+                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Services</p>
+                <p className="text-3xl font-bold text-white">{services.length}</p>
               </div>
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Active</p>
-                <p className="text-3xl font-bold text-emerald-400">
-                  {agents.filter((a) => a.isActive).length}
-                </p>
+                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Total Calls</p>
+                <p className="text-3xl font-bold text-white">{totalCalls}</p>
               </div>
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Total Spent</p>
+                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Earnings</p>
+                <p className="text-3xl font-bold text-emerald-400">${totalEarnings.toFixed(4)}</p>
+              </div>
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Callers</p>
                 <p className="text-3xl font-bold text-white">
-                  ${agents.reduce((sum, a) => sum + a.totalSpent, 0).toFixed(2)}
+                  {new Set(services.flatMap((s) => {
+                    const calls = (s as any).recentCalls || [];
+                    return calls.map((c: any) => c.callerAddress);
+                  })).size}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-white">Your Agents</h2>
+              <h2 className="text-xl font-bold text-white">Your Services</h2>
               <button
                 onClick={() => setShowCreate(true)}
                 className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-lg transition-colors"
               >
-                + Create Agent
+                + Create Service
               </button>
             </div>
 
-            {/* Create Modal */}
             {showCreate && (
               <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
                 <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md">
-                  <h3 className="text-lg font-semibold text-white mb-4">Create Agent</h3>
+                  <h3 className="text-lg font-semibold text-white mb-4">Create AI Service</h3>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-1">Agent Name</label>
+                      <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-1">Service Name</label>
                       <input
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
-                        placeholder="e.g., Research Bot"
+                        placeholder="e.g., Doc Summarizer"
                         className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-2">Services</label>
+                      <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-1">Description</label>
+                      <input
+                        value={newDesc}
+                        onChange={(e) => setNewDesc(e.target.value)}
+                        placeholder="What this service does"
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-2">Category</label>
                       <div className="flex flex-wrap gap-2">
-                        {SERVICES.map((s) => (
+                        {CATEGORIES.map((c) => (
                           <button
-                            key={s}
+                            key={c}
                             type="button"
-                            onClick={() => setNewServices((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s])}
+                            onClick={() => setNewCategory(c)}
                             className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
-                              newServices.includes(s)
+                              newCategory === c
                                 ? "border-violet-500 bg-violet-500/10 text-violet-400"
                                 : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
                             }`}
                           >
-                            {s}
+                            {c}
                           </button>
                         ))}
                       </div>
-                      {newServices.length > 0 && (
-                        <p className="text-xs text-zinc-500 mt-2">
-                          Activation: ${getPrice(newServices.length)} for 30 min unlimited access
-                        </p>
-                      )}
+                      <p className="text-xs text-zinc-600 mt-2">Price: $0.01 per call (x402 protected)</p>
                     </div>
                     <div className="flex gap-3">
                       <button
-                        onClick={() => { setShowCreate(false); setNewName(""); setNewServices([]); }}
+                        onClick={() => setShowCreate(false)}
                         className="flex-1 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm rounded-lg transition-colors"
                       >
                         Cancel
                       </button>
                       <button
-                        onClick={createAgent}
-                        disabled={!newName || newServices.length === 0}
+                        onClick={createService}
+                        disabled={!newName || !newDesc}
                         className="flex-1 py-2 bg-violet-600 hover:bg-violet-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white text-sm font-medium rounded-lg transition-colors"
                       >
                         Create
@@ -237,101 +214,95 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Agent List */}
-            {agents.length === 0 ? (
+            {services.length === 0 ? (
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-12 text-center">
-                <p className="text-zinc-500 mb-4">No agents yet. Create one to get started.</p>
+                <p className="text-zinc-500 mb-4">No services yet. Create one to start earning.</p>
+                <p className="text-xs text-zinc-600">Your service gets an x402-protected endpoint. Other agents pay to use it.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {agents.map((agent) => (
+                {services.map((svc) => (
                   <button
-                    key={agent.id}
-                    onClick={() => selectAgent(agent)}
+                    key={svc.id}
+                    onClick={() => selectService(svc)}
                     className={`bg-zinc-900 border rounded-xl p-5 text-left transition-colors ${
-                      selectedAgent?.id === agent.id
+                      selectedService?.id === svc.id
                         ? "border-violet-500"
                         : "border-zinc-800 hover:border-zinc-700"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-semibold text-white">{agent.name}</h3>
-                      <span
-                        className={`px-2 py-0.5 text-xs rounded-full ${
-                          agent.isActive
-                            ? "bg-emerald-500/10 text-emerald-400"
-                            : "bg-zinc-700 text-zinc-500"
-                        }`}
-                      >
-                        {agent.isActive ? "active" : "inactive"}
+                      <h3 className="font-semibold text-white">{svc.name}</h3>
+                      <span className="px-2 py-0.5 text-xs bg-emerald-500/10 text-emerald-400 rounded-full">
+                        ${svc.price}/call
                       </span>
                     </div>
-                    <p className="text-xs text-zinc-500 font-mono mb-3">
-                      {agent.address.slice(0, 10)}...{agent.address.slice(-6)}
-                    </p>
+                    <p className="text-xs text-zinc-500 mb-3 line-clamp-2">{svc.description}</p>
                     <div className="flex flex-wrap gap-1 mb-3">
-                      {agent.services.map((s) => (
-                        <span key={s} className="px-1.5 py-0.5 text-[10px] bg-zinc-800 text-zinc-400 rounded">{s}</span>
-                      ))}
+                      <span className="px-1.5 py-0.5 text-[10px] bg-zinc-800 text-zinc-400 rounded">{svc.category}</span>
+                      <span className="px-1.5 py-0.5 text-[10px] bg-zinc-800 text-zinc-400 rounded">x402</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-zinc-600">${agent.totalSpent.toFixed(2)} spent</span>
-                      {agent.isActive && (
-                        <span className="text-xs text-emerald-400 font-mono">{formatMs(agent.remainingMs)}</span>
-                      )}
+                    <div className="flex items-center justify-between text-xs text-zinc-600">
+                      <span>{svc.stats?.totalCalls || 0} calls</span>
+                      <span>${(svc.stats?.totalEarnings || 0).toFixed(4)} earned</span>
                     </div>
                   </button>
                 ))}
               </div>
             )}
 
-            {/* Selected Agent Detail */}
-            {selectedAgent && (
+            {selectedService && (
               <div className="mt-8 bg-zinc-900 border border-zinc-800 rounded-xl p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h3 className="text-lg font-semibold text-white">{selectedAgent.name}</h3>
-                    <p className="text-xs text-zinc-500 font-mono">{selectedAgent.address}</p>
+                    <h3 className="text-lg font-semibold text-white">{selectedService.name}</h3>
+                    <p className="text-xs text-zinc-500">{selectedService.description}</p>
                   </div>
-                  {selectedAgent.isActive ? (
-                    <div className="text-right">
-                      <p className="text-xs text-zinc-500 mb-1">Time remaining</p>
-                      <p className="text-2xl font-bold text-emerald-400 font-mono">{formatMs(selectedAgent.remainingMs)}</p>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => activateAgent(selectedAgent.id)}
-                      disabled={activating || selectedAgent.services.length === 0}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 text-white text-sm font-medium rounded-lg transition-colors"
-                    >
-                      {activating ? "Activating..." : `Buy Time — $${getPrice(selectedAgent.services.length)}`}
-                    </button>
-                  )}
-                </div>
-
-                {/* Services */}
-                <div className="mb-6">
-                  <h4 className="text-sm font-medium text-zinc-400 mb-3">Services</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedAgent.services.map((s) => (
-                      <span key={s} className={`px-3 py-1 text-xs rounded-full ${
-                        selectedAgent.isActive
-                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                          : "bg-zinc-800 text-zinc-500 border border-zinc-700"
-                      }`}>
-                        {selectedAgent.isActive && "● "}{s}
-                      </span>
-                    ))}
+                  <div className="text-right">
+                    <p className="text-xs text-zinc-500">Endpoint</p>
+                    <p className="text-xs text-zinc-400 font-mono">POST /api/services/{selectedService.id}/run</p>
                   </div>
                 </div>
 
-                {/* Activation History */}
+                <div className="grid grid-cols-4 gap-4 mb-6">
+                  <div className="bg-zinc-800 rounded-lg p-3">
+                    <p className="text-xs text-zinc-500">Total Calls</p>
+                    <p className="text-lg font-bold text-white">{selectedService.stats.totalCalls}</p>
+                  </div>
+                  <div className="bg-zinc-800 rounded-lg p-3">
+                    <p className="text-xs text-zinc-500">Today</p>
+                    <p className="text-lg font-bold text-white">{selectedService.stats.todayCalls}</p>
+                  </div>
+                  <div className="bg-zinc-800 rounded-lg p-3">
+                    <p className="text-xs text-zinc-500">Earnings</p>
+                    <p className="text-lg font-bold text-emerald-400">${selectedService.stats.totalEarnings.toFixed(4)}</p>
+                  </div>
+                  <div className="bg-zinc-800 rounded-lg p-3">
+                    <p className="text-xs text-zinc-500">Unique Callers</p>
+                    <p className="text-lg font-bold text-white">{selectedService.stats.uniqueCallers}</p>
+                  </div>
+                </div>
+
                 <div>
-                  <h4 className="text-sm font-medium text-zinc-400 mb-3">Purchase History</h4>
-                  <p className="text-xs text-zinc-600">
-                    Total spent: ${selectedAgent.totalSpent.toFixed(2)} ·
-                    Activated: {selectedAgent.activatedAt ? new Date(selectedAgent.activatedAt).toLocaleString() : "Never"}
-                  </p>
+                  <h4 className="text-sm font-medium text-zinc-400 mb-3">Recent Calls</h4>
+                  {!selectedService.recentCalls || selectedService.recentCalls.length === 0 ? (
+                    <p className="text-sm text-zinc-600">No calls yet</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {selectedService.recentCalls.map((call) => (
+                        <div key={call.id} className="flex items-center justify-between bg-zinc-800 rounded-lg px-4 py-2">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                            <span className="text-xs text-zinc-400 font-mono truncate">{call.input.slice(0, 50)}</span>
+                          </div>
+                          <div className="text-right shrink-0 ml-4">
+                            <span className="text-xs text-emerald-400">${call.amount}</span>
+                            <p className="text-[10px] text-zinc-600">{new Date(call.timestamp).toLocaleTimeString()}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

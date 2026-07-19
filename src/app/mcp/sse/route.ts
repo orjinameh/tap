@@ -1,81 +1,59 @@
 import { NextRequest } from "next/server";
 import {
-  createAgent,
-  getAgentsByOwner,
-  getAgent,
-  activateAgent,
-  getActivationPrice,
-  isAgentActive,
-  getRemainingMs,
-  getSpendRecords,
+  createService,
+  getServicesByCreator,
+  getAllServices,
+  getService,
+  getServiceStats,
+  getServiceCalls,
   ALL_SERVICES,
-} from "@/lib/agent-wallet";
+} from "@/lib/service-wallet";
 import { getAddressFromRequest } from "@/lib/auth";
-import { aiSummarize, aiTranslate, aiCodeReview, aiGenerate, aiExplain, aiClassify } from "@/lib/ai";
 
 const TOOLS = [
   {
-    name: "create_agent",
-    description: "Create a new AI agent wallet. Pick services to include. Costs $0.05/service for 30 min unlimited access.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "Agent name" },
-        services: { type: "array", items: { type: "string" }, description: "Services to enable" },
-      },
-      required: ["name", "services"],
-    },
-  },
-  {
-    name: "list_agents",
-    description: "List all your agents with activation status, services, and remaining time",
+    name: "discover_services",
+    description: "List all available AI services on AgentVault. Returns service names, descriptions, prices, and creator info.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
-    name: "activate_agent",
-    description: "Buy 30 minutes of unlimited AI access for an agent. Price = $0.05 × number of services.",
+    name: "get_service_info",
+    description: "Get detailed info about a specific service: description, price, stats, recent calls.",
     inputSchema: {
       type: "object",
       properties: {
-        agentId: { type: "string", description: "Agent ID" },
+        serviceId: { type: "string", description: "Service ID" },
       },
-      required: ["agentId"],
+      required: ["serviceId"],
     },
   },
   {
-    name: "check_status",
-    description: "Check if an agent is active and how much time is remaining",
+    name: "create_service",
+    description: "Create a new x402-protected AI service. It gets its own wallet and MCP endpoint.",
     inputSchema: {
       type: "object",
       properties: {
-        agentId: { type: "string", description: "Agent ID" },
+        name: { type: "string", description: "Service name" },
+        description: { type: "string", description: "What this service does" },
+        category: { type: "string", description: "Service type: summarize, translate, code-review, generate, explain, classify" },
       },
-      required: ["agentId"],
+      required: ["name", "description", "category"],
     },
   },
   {
-    name: "run_service",
-    description: "Run an AI service using an active agent. Agent must have time remaining.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        agentId: { type: "string", description: "Agent ID" },
-        service: { type: "string", description: "Service name" },
-        input: { type: "string", description: "Input text" },
-        targetLang: { type: "string", description: "Target language (for translate only)" },
-      },
-      required: ["agentId", "service", "input"],
-    },
+    name: "my_services",
+    description: "List services you created with earnings and usage stats",
+    inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
-    name: "get_receipts",
-    description: "Get activation history for an agent",
+    name: "get_service_calls",
+    description: "Get recent calls to a service you own — who called it, what they sent, what they paid",
     inputSchema: {
       type: "object",
       properties: {
-        agentId: { type: "string", description: "Agent ID" },
+        serviceId: { type: "string", description: "Service ID" },
       },
-      required: ["agentId"],
+      required: ["serviceId"],
     },
   },
 ];
@@ -94,22 +72,6 @@ function err(id: string | number | null, code: number, message: string) {
     id,
     error: { code, message },
   });
-}
-
-function jsonErr(id: string | number | null) {
-  return err(id, -32700, "Parse error: malformed JSON-RPC request");
-}
-
-function toolErr(id: string | number | null, message: string) {
-  return err(id, -32603, message);
-}
-
-function paramErr(id: string | number | null, message: string) {
-  return err(id, -32602, message);
-}
-
-function ownershipErr(id: string | number | null) {
-  return err(id, -32001, "Unauthorized: you do not own this agent");
 }
 
 export async function GET() {
@@ -157,11 +119,19 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json();
   } catch {
-    return jsonErr(null);
+    return Response.json({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32700, message: "Parse error" },
+    });
   }
 
-  if (!body || typeof body !== "object" || !body.method) {
-    return err(body?.id ?? null, -32600, "Invalid request: missing method");
+  if (!body?.method) {
+    return Response.json({
+      jsonrpc: "2.0",
+      id: body?.id ?? null,
+      error: { code: -32600, message: "Invalid request" },
+    });
   }
 
   if (body.method === "tools/list") {
@@ -170,128 +140,159 @@ export async function POST(request: NextRequest) {
 
   if (body.method === "tools/call") {
     if (!body.params || typeof body.params.name !== "string") {
-      return paramErr(body.id, "Missing tool name in params");
+      return Response.json({
+        jsonrpc: "2.0",
+        id: body.id,
+        error: { code: -32602, message: "Missing tool name" },
+      });
     }
 
     const { name, arguments: args } = body.params;
 
     try {
       const address = getAddressFromRequest(request);
-      if (!address) {
-        return err(body.id, -32000, "Authentication required: provide a valid JWT in Authorization: Bearer <token>");
-      }
 
-      if (name === "create_agent") {
-        if (!args?.name || typeof args.name !== "string") return paramErr(body.id, "Missing required parameter: name");
-        if (!Array.isArray(args.services) || args.services.length === 0) return paramErr(body.id, "Missing required parameter: services (array)");
-        const invalid = args.services.filter((s: string) => !ALL_SERVICES.includes(s));
-        if (invalid.length > 0) return paramErr(body.id, `Invalid services: ${invalid.join(", ")}`);
-        const agent = createAgent(args.name, address, args.services);
-        const price = getActivationPrice(args.services.length);
-        return ok(body.id, JSON.stringify({
-          id: agent.id,
-          name: agent.name,
-          address: agent.address,
-          services: agent.services,
-          activationPrice: `$${price} for 30 min`,
-          message: "Agent created. Call activate_agent to buy time.",
-        }, null, 2));
-      }
-
-      if (name === "list_agents") {
-        const agents = getAgentsByOwner(address);
-        const result = agents.map((a) => ({
-          id: a.id,
-          name: a.name,
-          isActive: isAgentActive(a),
-          services: a.services,
-          remainingMs: getRemainingMs(a),
-          totalSpent: a.totalSpent,
+      if (name === "discover_services") {
+        const all = getAllServices();
+        const result = all.map((s) => ({
+          id: s.id,
+          name: s.name,
+          description: s.description,
+          category: s.category,
+          price: `$${s.price}`,
+          endpoint: `POST /api/services/${s.id}/run`,
+          calls: s.totalCalls,
         }));
-        return ok(body.id, JSON.stringify({ agents: result }, null, 2));
+        return ok(body.id, JSON.stringify({ services: result, count: result.length }, null, 2));
       }
 
-      if (name === "activate_agent") {
-        if (!args?.agentId) return paramErr(body.id, "Missing required parameter: agentId");
-        const agent = getAgent(args.agentId);
-        if (!agent) return err(body.id, -32002, `Agent not found: ${args.agentId}`);
-        if (agent.ownerAddress !== address.toLowerCase()) return ownershipErr(body.id);
-        if (agent.services.length === 0) return err(body.id, -32003, "Agent has no services configured");
-        const price = getActivationPrice(agent.services.length);
-        const txHash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("")}`;
-        const updated = activateAgent(args.agentId, txHash);
-        if (!updated) return toolErr(body.id, "Activation failed");
-        return ok(body.id, JSON.stringify({
-          activated: true,
-          services: updated.services,
-          price: `$${price}`,
-          txHash,
-          expiresAt: updated.expiresAt,
-          duration: "30 minutes",
-        }, null, 2));
-      }
-
-      if (name === "check_status") {
-        if (!args?.agentId) return paramErr(body.id, "Missing required parameter: agentId");
-        const agent = getAgent(args.agentId);
-        if (!agent) return err(body.id, -32002, `Agent not found: ${args.agentId}`);
-        if (agent.ownerAddress !== address.toLowerCase()) return ownershipErr(body.id);
-        const active = isAgentActive(agent);
-        const remainingMs = getRemainingMs(agent);
-        return ok(body.id, JSON.stringify({
-          agent: agent.name,
-          isActive: active,
-          services: agent.services,
-          remainingMs,
-          remainingFormatted: active ? `${Math.floor(remainingMs / 60000)}m ${Math.floor((remainingMs % 60000) / 1000)}s` : "Expired",
-          expiresAt: agent.expiresAt,
-        }, null, 2));
-      }
-
-      if (name === "run_service") {
-        if (!args?.agentId) return paramErr(body.id, "Missing required parameter: agentId");
-        if (!args?.service) return paramErr(body.id, "Missing required parameter: service");
-        if (!args?.input) return paramErr(body.id, "Missing required parameter: input");
-        const agent = getAgent(args.agentId);
-        if (!agent) return err(body.id, -32002, `Agent not found: ${args.agentId}`);
-        if (agent.ownerAddress !== address.toLowerCase()) return ownershipErr(body.id);
-        if (!isAgentActive(agent)) return err(body.id, -32003, `Agent expired. ${Math.floor(getRemainingMs(agent) / 60000)}m remaining. Call activate_agent to renew.`);
-        if (!agent.services.includes(args.service)) return err(body.id, -32004, `Service "${args.service}" not enabled. Enabled: ${agent.services.join(", ")}`);
-
-        let aiResult: string;
-        switch (args.service) {
-          case "summarize": aiResult = await aiSummarize(args.input); break;
-          case "translate": aiResult = await aiTranslate(args.input, args.targetLang || "Spanish"); break;
-          case "code-review": aiResult = await aiCodeReview(args.input); break;
-          case "generate": aiResult = await aiGenerate(args.input, "response"); break;
-          case "explain": aiResult = await aiExplain(args.input); break;
-          case "classify": aiResult = await aiClassify(args.input); break;
-          default: return err(body.id, -32004, `Unknown service: ${args.service}`);
+      if (name === "get_service_info") {
+        if (!args?.serviceId) {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            error: { code: -32602, message: "Missing serviceId" },
+          });
         }
-
+        const svc = getService(args.serviceId);
+        if (!svc) {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            error: { code: -32002, message: `Service not found: ${args.serviceId}` },
+          });
+        }
+        const stats = getServiceStats(args.serviceId);
         return ok(body.id, JSON.stringify({
-          service: args.service,
-          result: aiResult,
-          agent: agent.name,
-          remainingMs: getRemainingMs(agent),
+          ...svc,
+          walletPrivateKey: undefined,
+          stats,
         }, null, 2));
       }
 
-      if (name === "get_receipts") {
-        if (!args?.agentId) return paramErr(body.id, "Missing required parameter: agentId");
-        const agent = getAgent(args.agentId);
-        if (!agent) return err(body.id, -32002, `Agent not found: ${args.agentId}`);
-        if (agent.ownerAddress !== address.toLowerCase()) return ownershipErr(body.id);
-        const records = getSpendRecords(args.agentId);
-        return ok(body.id, JSON.stringify({ agent: agent.name, activations: records }, null, 2));
+      if (name === "create_service") {
+        if (!address) {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            error: { code: -32000, message: "Authentication required" },
+          });
+        }
+        if (!args?.name || !args?.description || !args?.category) {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            error: { code: -32602, message: "Missing required: name, description, category" },
+          });
+        }
+        if (!ALL_SERVICES.includes(args.category)) {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            error: { code: -32602, message: `Invalid category. Must be one of: ${ALL_SERVICES.join(", ")}` },
+          });
+        }
+        const svc = createService(args.name, args.description, args.category, address);
+        return ok(body.id, JSON.stringify({
+          id: svc.id,
+          name: svc.name,
+          category: svc.category,
+          price: `$${svc.price}`,
+          endpoint: `POST /api/services/${svc.id}/run`,
+          walletAddress: svc.walletAddress,
+          message: "Service created. Others can discover and pay for it via MCP or the endpoint.",
+        }, null, 2));
       }
 
-      return err(body.id, -32601, `Unknown tool: ${name}`);
+      if (name === "my_services") {
+        if (!address) {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            error: { code: -32000, message: "Authentication required" },
+          });
+        }
+        const myServices = getServicesByCreator(address);
+        const result = myServices.map((s) => ({
+          id: s.id,
+          name: s.name,
+          category: s.category,
+          price: `$${s.price}`,
+          totalCalls: s.totalCalls,
+          totalEarnings: `$${s.totalEarnings.toFixed(4)}`,
+          stats: getServiceStats(s.id),
+        }));
+        return ok(body.id, JSON.stringify({ services: result }, null, 2));
+      }
+
+      if (name === "get_service_calls") {
+        if (!args?.serviceId) {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            error: { code: -32602, message: "Missing serviceId" },
+          });
+        }
+        const svc = getService(args.serviceId);
+        if (!svc) {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            error: { code: -32002, message: `Service not found: ${args.serviceId}` },
+          });
+        }
+        if (!address || svc.creatorAddress !== address.toLowerCase()) {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            error: { code: -32001, message: "Unauthorized" },
+          });
+        }
+        const records = getServiceCalls(args.serviceId);
+        return ok(body.id, JSON.stringify({
+          service: svc.name,
+          calls: records.slice(-20).reverse(),
+        }, null, 2));
+      }
+
+      return Response.json({
+        jsonrpc: "2.0",
+        id: body.id,
+        error: { code: -32601, message: `Unknown tool: ${name}` },
+      });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Internal error";
-      return toolErr(body.id, message);
+      return Response.json({
+        jsonrpc: "2.0",
+        id: body.id,
+        error: { code: -32603, message },
+      });
     }
   }
 
-  return err(body.id, -32601, `Method not found: ${body.method}`);
+  return Response.json({
+    jsonrpc: "2.0",
+    id: body.id,
+    error: { code: -32601, message: `Method not found: ${body.method}` },
+  });
 }

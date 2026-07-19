@@ -11,14 +11,14 @@ const resourceServer = new x402ResourceServer(facilitatorClient)
 
 export default paymentProxy(
   {
-    "/api/auth/session": {
-      accepts: { scheme: "exact", price: "$0.05", network: "eip155:84532", payTo },
-      description: "30 minutes unlimited API access",
+    "/api/services/[id]/run": {
+      accepts: { scheme: "exact", price: "$0.01", network: "eip155:84532", payTo },
+      description: "AI service call — pay per use",
     },
   },
   resourceServer,
 );
 
 export const config = {
-  matcher: ["/api/auth/session"],
+  matcher: ["/api/services/:id/run"],
 };
