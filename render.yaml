@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: tap
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PAYMENT_RECIPIENT_ADDRESS
+        sync: false
+      - key: NEXT_PUBLIC_FACILITATOR_URL
+        value: https://facilitator.x402.org
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: NEXT_PUBLIC_CHAIN_ID
+        value: "84532"
+      - key: NEXT_PUBLIC_USDC_ADDRESS
+        value: "0x036CbD53842c5426634c4923a9dFCA9f03Cc8540"
