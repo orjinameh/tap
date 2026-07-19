@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import WalletButton from "@/components/WalletButton";
 
+const SERVICES = ["summarize", "translate", "code-review", "generate", "explain", "classify"];
+
 interface Agent {
   id: string;
   name: string;
@@ -48,6 +50,9 @@ export default function Dashboard() {
     maxPerDay: 1.00,
     maxPerWeek: 5.00,
   });
+  const [newAllowedServices, setNewAllowedServices] = useState<string[]>([]);
+  const [newBlockedServices, setNewBlockedServices] = useState<string[]>([]);
+  const [testService, setTestService] = useState("summarize");
   const [address, setAddress] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,14 +88,16 @@ export default function Dashboard() {
         name: newName,
         policy: {
           ...newPolicy,
-          allowedServices: [],
-          blockedServices: [],
+          allowedServices: newAllowedServices,
+          blockedServices: newBlockedServices,
         },
       }),
     });
     if (res.ok) {
       setShowCreate(false);
       setNewName("");
+      setNewAllowedServices([]);
+      setNewBlockedServices([]);
       loadAgents();
     }
   };
@@ -221,6 +228,45 @@ export default function Dashboard() {
                         />
                       </div>
                     </div>
+                    <div>
+                      <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-2">Allowed Services</label>
+                      <p className="text-xs text-zinc-600 mb-2">Leave empty to allow all services</p>
+                      <div className="flex flex-wrap gap-2">
+                        {SERVICES.map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => setNewAllowedServices((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s])}
+                            className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                              newAllowedServices.includes(s)
+                                ? "border-emerald-500 bg-emerald-500/10 text-emerald-400"
+                                : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
+                            }`}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-2">Blocked Services</label>
+                      <div className="flex flex-wrap gap-2">
+                        {SERVICES.map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => setNewBlockedServices((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s])}
+                            className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                              newBlockedServices.includes(s)
+                                ? "border-red-500 bg-red-500/10 text-red-400"
+                                : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
+                            }`}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <div className="flex gap-3">
                       <button
                         onClick={() => setShowCreate(false)}
@@ -300,7 +346,16 @@ export default function Dashboard() {
                     <h3 className="text-lg font-semibold text-white">{selectedAgent.name}</h3>
                     <p className="text-xs text-zinc-500 font-mono">{selectedAgent.address}</p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 items-center">
+                    <select
+                      value={testService}
+                      onChange={(e) => setTestService(e.target.value)}
+                      className="px-2 py-1.5 bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs rounded-lg"
+                    >
+                      {SERVICES.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
                     <button
                       onClick={async () => {
                         const token = localStorage.getItem("tap_token");
@@ -310,7 +365,7 @@ export default function Dashboard() {
                             "Content-Type": "application/json",
                             Authorization: `Bearer ${token}`,
                           },
-                          body: JSON.stringify({ service: "summarize", input: "Test payment" }),
+                          body: JSON.stringify({ service: testService, input: "Test payment" }),
                         });
                         const data = await res.json();
                         alert(res.ok ? `Payment sent! TX: ${data.txHash?.slice(0, 18)}...` : `Failed: ${data.error}`);
@@ -320,6 +375,35 @@ export default function Dashboard() {
                     >
                       Test Payment
                     </button>
+                  </div>
+                </div>
+
+                {/* Services */}
+                <div className="mb-6">
+                  <h4 className="text-sm font-medium text-zinc-400 mb-3">Service Access</h4>
+                  <div className="space-y-2">
+                    {selectedAgent.policy.allowedServices.length > 0 ? (
+                      <div>
+                        <p className="text-xs text-zinc-500 mb-1">Allowed</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedAgent.policy.allowedServices.map((s) => (
+                            <span key={s} className="px-2 py-0.5 text-xs bg-emerald-500/10 text-emerald-400 rounded-full">{s}</span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-zinc-600">All services allowed</p>
+                    )}
+                    {selectedAgent.policy.blockedServices.length > 0 && (
+                      <div>
+                        <p className="text-xs text-zinc-500 mb-1">Blocked</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedAgent.policy.blockedServices.map((s) => (
+                            <span key={s} className="px-2 py-0.5 text-xs bg-red-500/10 text-red-400 rounded-full">{s}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
