@@ -2,7 +2,7 @@ import { ethers } from "ethers";
 
 export const ALL_SERVICES = ["summarize", "translate", "code-review", "generate", "explain", "classify"];
 
-const BASE_RATE = 0.05; // $0.05 per service for 30 min
+const BASE_RATE = 0.01; // $0.01 per service for 30 min
 const DURATION_MS = 30 * 60 * 1000; // 30 minutes
 
 export interface AgentWallet {
