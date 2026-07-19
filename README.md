@@ -84,3 +84,4 @@ Tap exposes an MCP SSE endpoint at `/mcp/sse` for AI agent discovery:
 ## License
 
 MIT
+# tap
