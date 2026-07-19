@@ -17,8 +17,17 @@ export default function WalletButton() {
     const saved = localStorage.getItem("tap_token");
     const savedAddr = localStorage.getItem("tap_address");
     if (saved && savedAddr) {
-      setToken(saved);
-      setAddress(savedAddr);
+      fetch("/api/auth/me", { headers: { Authorization: `Bearer ${saved}` } })
+        .then((r) => {
+          if (r.ok) {
+            setToken(saved);
+            setAddress(savedAddr);
+          } else {
+            localStorage.removeItem("tap_token");
+            localStorage.removeItem("tap_address");
+          }
+        })
+        .catch(() => {});
     }
   }, []);
 
@@ -45,11 +54,15 @@ export default function WalletButton() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ address: addr, signature, message }),
       });
-      const { token: jwt } = await verifyRes.json();
+      const data = await verifyRes.json();
+      if (!data.token) {
+        alert("Verification failed. Please try again.");
+        return;
+      }
 
-      localStorage.setItem("tap_token", jwt);
+      localStorage.setItem("tap_token", data.token);
       localStorage.setItem("tap_address", addr);
-      setToken(jwt);
+      setToken(data.token);
       setAddress(addr);
     } catch (err) {
       console.error("Connection failed:", err);
