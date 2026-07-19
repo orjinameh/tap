@@ -2,33 +2,48 @@ import { NextRequest } from "next/server";
 
 const TOOLS = [
   {
-    name: "list_apis",
-    description: "List all available AI APIs with their prices and descriptions",
-    inputSchema: { type: "object", properties: {}, required: [] },
-  },
-  {
-    name: "call_api",
-    description: "Call an AI API endpoint. Requires x402 payment.",
+    name: "create_agent",
+    description: "Create a new AI agent wallet with spending policies",
     inputSchema: {
       type: "object",
       properties: {
-        api: { type: "string", description: "API name: summarize, translate, code-review, generate, explain, classify" },
-        text: { type: "string", description: "Input text for the API" },
-        targetLang: { type: "string", description: "Target language (for translate API)" },
-        type: { type: "string", description: "Content type (for generate API)" },
+        name: { type: "string", description: "Agent name" },
+        maxPerTransaction: { type: "number", description: "Max USDC per transaction" },
+        maxPerDay: { type: "number", description: "Max USDC per day" },
+        maxPerWeek: { type: "number", description: "Max USDC per week" },
       },
-      required: ["api", "text"],
+      required: ["name"],
     },
   },
-];
-
-const API_CATALOG = [
-  { name: "summarize", price: "$0.01 USDC", description: "AI Text Summarization" },
-  { name: "translate", price: "$0.01 USDC", description: "AI Translation" },
-  { name: "code-review", price: "$0.05 USDC", description: "AI Code Review" },
-  { name: "generate", price: "$0.02 USDC", description: "AI Content Generation" },
-  { name: "explain", price: "$0.01 USDC", description: "AI Code/Text Explanation" },
-  { name: "classify", price: "$0.005 USDC", description: "AI Text Classification" },
+  {
+    name: "list_agents",
+    description: "List all your agent wallets with their policies and spending",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "check_policy",
+    description: "Check if an agent can make a specific payment",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agentId: { type: "string", description: "Agent ID" },
+        service: { type: "string", description: "Service name" },
+        amount: { type: "number", description: "Amount in USDC" },
+      },
+      required: ["agentId", "service", "amount"],
+    },
+  },
+  {
+    name: "get_receipts",
+    description: "Get spending receipts for an agent",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agentId: { type: "string", description: "Agent ID" },
+      },
+      required: ["agentId"],
+    },
+  },
 ];
 
 export async function GET() {
@@ -48,7 +63,7 @@ export async function GET() {
         result: {
           protocolVersion: "2025-03-26",
           capabilities: { tools: {} },
-          serverInfo: { name: "tap-mcp", version: "1.0.0" },
+          serverInfo: { name: "agentvault-mcp", version: "1.0.0" },
         },
       });
 
@@ -85,17 +100,20 @@ export async function POST(request: NextRequest) {
   if (body.method === "tools/call") {
     const { name, arguments: args } = body.params;
 
-    if (name === "list_apis") {
+    if (name === "list_agents") {
       return Response.json({
         jsonrpc: "2.0",
         id: body.id,
         result: {
-          content: [{ type: "text", text: JSON.stringify(API_CATALOG, null, 2) }],
+          content: [{
+            type: "text",
+            text: "Authentication required. Call /api/auth/nonce and /api/auth/verify to get a JWT token, then call GET /api/agents with Authorization: Bearer <token>.",
+          }],
         },
       });
     }
 
-    if (name === "call_api") {
+    if (name === "create_agent") {
       return Response.json({
         jsonrpc: "2.0",
         id: body.id,
@@ -103,11 +121,44 @@ export async function POST(request: NextRequest) {
           content: [{
             type: "text",
             text: JSON.stringify({
-              error: "x402 payment required",
-              message: `To call /api/ai/${args?.api || "unknown"}, include an X-PAYMENT header with a valid x402 payment.`,
-              endpoint: `/api/ai/${args?.api || "unknown"}`,
-              price: API_CATALOG.find((a) => a.name === args?.api)?.price || "unknown",
+              message: "Create an agent via POST /api/agents",
+              body: {
+                name: args?.name,
+                policy: {
+                  maxPerTransaction: args?.maxPerTransaction || 0.10,
+                  maxPerDay: args?.maxPerDay || 1.00,
+                  maxPerWeek: args?.maxPerWeek || 5.00,
+                  allowedServices: [],
+                  blockedServices: [],
+                },
+              },
             }, null, 2),
+          }],
+        },
+      });
+    }
+
+    if (name === "check_policy") {
+      return Response.json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {
+          content: [{
+            type: "text",
+            text: `Policy check for agent ${args?.agentId}: service=${args?.service}, amount=$${args?.amount}. Call GET /api/agents/${args?.agentId} to see full policy details.`,
+          }],
+        },
+      });
+    }
+
+    if (name === "get_receipts") {
+      return Response.json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {
+          content: [{
+            type: "text",
+            text: `Call GET /api/agents/${args?.agentId}/receipts with Authorization: Bearer <token> to get receipts.`,
           }],
         },
       });

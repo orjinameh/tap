@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Tap — Pay-Per-Use AI API Marketplace",
-  description: "x402-powered AI API marketplace. No API keys, no subscriptions — just USDC micropayments.",
+  title: "AgentVault — Agent Payment Infrastructure for x402",
+  description: "Create wallets for AI agents. Set spending policies. Let them pay for x402 services autonomously — within limits you control.",
 };
 
 export default function RootLayout({
