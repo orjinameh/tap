@@ -301,12 +301,25 @@ export default function Dashboard() {
                     <p className="text-xs text-zinc-500 font-mono">{selectedAgent.address}</p>
                   </div>
                   <div className="flex gap-2">
-                    <a
-                      href={`/api/agents/${selectedAgent.id}/pay`}
+                    <button
+                      onClick={async () => {
+                        const token = localStorage.getItem("tap_token");
+                        const res = await fetch(`/api/agents/${selectedAgent!.id}/pay`, {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${token}`,
+                          },
+                          body: JSON.stringify({ service: "summarize", input: "Test payment" }),
+                        });
+                        const data = await res.json();
+                        alert(res.ok ? `Payment sent! TX: ${data.txHash?.slice(0, 18)}...` : `Failed: ${data.error}`);
+                        if (res.ok) loadAgents();
+                      }}
                       className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs rounded-lg transition-colors"
                     >
                       Test Payment
-                    </a>
+                    </button>
                   </div>
                 </div>
 
