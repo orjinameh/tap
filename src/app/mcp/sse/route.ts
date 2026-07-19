@@ -3,39 +3,37 @@ import {
   createAgent,
   getAgentsByOwner,
   getAgent,
-  getAgentStats,
-  checkSpendingPolicy,
+  activateAgent,
+  getActivationPrice,
+  isAgentActive,
+  getRemainingMs,
   getSpendRecords,
-  recordSpend,
-  SpendingPolicy,
+  ALL_SERVICES,
 } from "@/lib/agent-wallet";
 import { getAddressFromRequest } from "@/lib/auth";
+import { aiSummarize, aiTranslate, aiCodeReview, aiGenerate, aiExplain, aiClassify } from "@/lib/ai";
 
 const TOOLS = [
   {
     name: "create_agent",
-    description: "Create a new AI agent wallet with spending policies. Returns agent ID, address, and policy.",
+    description: "Create a new AI agent wallet. Pick services to include. Costs $0.05/service for 30 min unlimited access.",
     inputSchema: {
       type: "object",
       properties: {
         name: { type: "string", description: "Agent name" },
-        maxPerTransaction: { type: "number", description: "Max USDC per transaction (default 0.10)" },
-        maxPerDay: { type: "number", description: "Max USDC per day (default 1.00)" },
-        maxPerWeek: { type: "number", description: "Max USDC per week (default 5.00)" },
-        allowedServices: { type: "array", items: { type: "string" }, description: "Whitelist of services (empty = all allowed)" },
-        blockedServices: { type: "array", items: { type: "string" }, description: "Blacklist of services" },
+        services: { type: "array", items: { type: "string" }, description: "Services to enable" },
       },
-      required: ["name"],
+      required: ["name", "services"],
     },
   },
   {
     name: "list_agents",
-    description: "List all your agent wallets with their policies, spending stats, and status",
+    description: "List all your agents with activation status, services, and remaining time",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
-    name: "get_agent_stats",
-    description: "Get detailed spending stats for an agent: today/week/total spend, transaction count, blocked attempts",
+    name: "activate_agent",
+    description: "Buy 30 minutes of unlimited AI access for an agent. Price = $0.05 × number of services.",
     inputSchema: {
       type: "object",
       properties: {
@@ -45,34 +43,33 @@ const TOOLS = [
     },
   },
   {
-    name: "check_policy",
-    description: "Check if an agent is allowed to make a specific payment. Returns allowed/denied with reason.",
+    name: "check_status",
+    description: "Check if an agent is active and how much time is remaining",
     inputSchema: {
       type: "object",
       properties: {
         agentId: { type: "string", description: "Agent ID" },
-        service: { type: "string", description: "Service name (e.g. summarize, translate, code-review)" },
-        amount: { type: "number", description: "Amount in USDC" },
       },
-      required: ["agentId", "service", "amount"],
+      required: ["agentId"],
     },
   },
   {
-    name: "agent_pay",
-    description: "Execute a payment from an agent to a service. Checks policy, records spend, returns tx hash.",
+    name: "run_service",
+    description: "Run an AI service using an active agent. Agent must have time remaining.",
     inputSchema: {
       type: "object",
       properties: {
         agentId: { type: "string", description: "Agent ID" },
         service: { type: "string", description: "Service name" },
-        amount: { type: "number", description: "Amount in USDC" },
+        input: { type: "string", description: "Input text" },
+        targetLang: { type: "string", description: "Target language (for translate only)" },
       },
-      required: ["agentId", "service", "amount"],
+      required: ["agentId", "service", "input"],
     },
   },
   {
     name: "get_receipts",
-    description: "Get spending receipts for an agent. Returns all transactions with amounts, services, tx hashes, and policy check results.",
+    description: "Get activation history for an agent",
     inputSchema: {
       type: "object",
       properties: {
@@ -184,91 +181,99 @@ export async function POST(request: NextRequest) {
         return err(body.id, -32000, "Authentication required: provide a valid JWT in Authorization: Bearer <token>");
       }
 
+      if (name === "create_agent") {
+        if (!args?.name || typeof args.name !== "string") return paramErr(body.id, "Missing required parameter: name");
+        if (!Array.isArray(args.services) || args.services.length === 0) return paramErr(body.id, "Missing required parameter: services (array)");
+        const invalid = args.services.filter((s: string) => !ALL_SERVICES.includes(s));
+        if (invalid.length > 0) return paramErr(body.id, `Invalid services: ${invalid.join(", ")}`);
+        const agent = createAgent(args.name, address, args.services);
+        const price = getActivationPrice(args.services.length);
+        return ok(body.id, JSON.stringify({
+          id: agent.id,
+          name: agent.name,
+          address: agent.address,
+          services: agent.services,
+          activationPrice: `$${price} for 30 min`,
+          message: "Agent created. Call activate_agent to buy time.",
+        }, null, 2));
+      }
+
       if (name === "list_agents") {
         const agents = getAgentsByOwner(address);
         const result = agents.map((a) => ({
           id: a.id,
           name: a.name,
-          address: a.address,
-          isActive: a.isActive,
-          policy: a.policy,
+          isActive: isAgentActive(a),
+          services: a.services,
+          remainingMs: getRemainingMs(a),
           totalSpent: a.totalSpent,
-          stats: getAgentStats(a.id),
         }));
         return ok(body.id, JSON.stringify({ agents: result }, null, 2));
       }
 
-      if (name === "create_agent") {
-        if (!args?.name || typeof args.name !== "string") {
-          return paramErr(body.id, "Missing required parameter: name (string)");
-        }
-        const policy: SpendingPolicy = {
-          maxPerTransaction: args.maxPerTransaction ?? 0.10,
-          maxPerDay: args.maxPerDay ?? 1.00,
-          maxPerWeek: args.maxPerWeek ?? 5.00,
-          allowedServices: Array.isArray(args.allowedServices) ? args.allowedServices : [],
-          blockedServices: Array.isArray(args.blockedServices) ? args.blockedServices : [],
-        };
-        const agent = createAgent(args.name, address, policy);
-        return ok(body.id, JSON.stringify({
-          id: agent.id,
-          name: agent.name,
-          address: agent.address,
-          policy: agent.policy,
-          message: "Agent created. Fund with USDC on Base Sepolia to start spending.",
-        }, null, 2));
-      }
-
-      if (name === "get_agent_stats") {
+      if (name === "activate_agent") {
         if (!args?.agentId) return paramErr(body.id, "Missing required parameter: agentId");
         const agent = getAgent(args.agentId);
         if (!agent) return err(body.id, -32002, `Agent not found: ${args.agentId}`);
         if (agent.ownerAddress !== address.toLowerCase()) return ownershipErr(body.id);
-        const stats = getAgentStats(args.agentId);
-        return ok(body.id, JSON.stringify({ agent: agent.name, ...stats }, null, 2));
-      }
-
-      if (name === "check_policy") {
-        if (!args?.agentId) return paramErr(body.id, "Missing required parameter: agentId");
-        if (!args?.service) return paramErr(body.id, "Missing required parameter: service");
-        if (args?.amount === undefined || args?.amount === null) return paramErr(body.id, "Missing required parameter: amount");
-        const agent = getAgent(args.agentId);
-        if (!agent) return err(body.id, -32002, `Agent not found: ${args.agentId}`);
-        if (agent.ownerAddress !== address.toLowerCase()) return ownershipErr(body.id);
-        const result = checkSpendingPolicy(agent, args.service, args.amount);
-        return ok(body.id, JSON.stringify({
-          agent: agent.name,
-          service: args.service,
-          amount: args.amount,
-          allowed: result.allowed,
-          reason: result.reason || null,
-        }, null, 2));
-      }
-
-      if (name === "agent_pay") {
-        if (!args?.agentId) return paramErr(body.id, "Missing required parameter: agentId");
-        if (!args?.service) return paramErr(body.id, "Missing required parameter: service");
-        if (args?.amount === undefined || args?.amount === null) return paramErr(body.id, "Missing required parameter: amount");
-        const agent = getAgent(args.agentId);
-        if (!agent) return err(body.id, -32002, `Agent not found: ${args.agentId}`);
-        if (agent.ownerAddress !== address.toLowerCase()) return ownershipErr(body.id);
-
-        const policyCheck = checkSpendingPolicy(agent, args.service, args.amount);
-        if (!policyCheck.allowed) {
-          recordSpend(agent.id, args.service, args.amount, "blocked", { passed: false, reason: policyCheck.reason });
-          return err(body.id, -32003, `Policy violation: ${policyCheck.reason}`);
-        }
-
+        if (agent.services.length === 0) return err(body.id, -32003, "Agent has no services configured");
+        const price = getActivationPrice(agent.services.length);
         const txHash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("")}`;
-        const record = recordSpend(agent.id, args.service, args.amount, txHash, { passed: true });
+        const updated = activateAgent(args.agentId, txHash);
+        if (!updated) return toolErr(body.id, "Activation failed");
+        return ok(body.id, JSON.stringify({
+          activated: true,
+          services: updated.services,
+          price: `$${price}`,
+          txHash,
+          expiresAt: updated.expiresAt,
+          duration: "30 minutes",
+        }, null, 2));
+      }
+
+      if (name === "check_status") {
+        if (!args?.agentId) return paramErr(body.id, "Missing required parameter: agentId");
+        const agent = getAgent(args.agentId);
+        if (!agent) return err(body.id, -32002, `Agent not found: ${args.agentId}`);
+        if (agent.ownerAddress !== address.toLowerCase()) return ownershipErr(body.id);
+        const active = isAgentActive(agent);
+        const remainingMs = getRemainingMs(agent);
         return ok(body.id, JSON.stringify({
           agent: agent.name,
+          isActive: active,
+          services: agent.services,
+          remainingMs,
+          remainingFormatted: active ? `${Math.floor(remainingMs / 60000)}m ${Math.floor((remainingMs % 60000) / 1000)}s` : "Expired",
+          expiresAt: agent.expiresAt,
+        }, null, 2));
+      }
+
+      if (name === "run_service") {
+        if (!args?.agentId) return paramErr(body.id, "Missing required parameter: agentId");
+        if (!args?.service) return paramErr(body.id, "Missing required parameter: service");
+        if (!args?.input) return paramErr(body.id, "Missing required parameter: input");
+        const agent = getAgent(args.agentId);
+        if (!agent) return err(body.id, -32002, `Agent not found: ${args.agentId}`);
+        if (agent.ownerAddress !== address.toLowerCase()) return ownershipErr(body.id);
+        if (!isAgentActive(agent)) return err(body.id, -32003, `Agent expired. ${Math.floor(getRemainingMs(agent) / 60000)}m remaining. Call activate_agent to renew.`);
+        if (!agent.services.includes(args.service)) return err(body.id, -32004, `Service "${args.service}" not enabled. Enabled: ${agent.services.join(", ")}`);
+
+        let aiResult: string;
+        switch (args.service) {
+          case "summarize": aiResult = await aiSummarize(args.input); break;
+          case "translate": aiResult = await aiTranslate(args.input, args.targetLang || "Spanish"); break;
+          case "code-review": aiResult = await aiCodeReview(args.input); break;
+          case "generate": aiResult = await aiGenerate(args.input, "response"); break;
+          case "explain": aiResult = await aiExplain(args.input); break;
+          case "classify": aiResult = await aiClassify(args.input); break;
+          default: return err(body.id, -32004, `Unknown service: ${args.service}`);
+        }
+
+        return ok(body.id, JSON.stringify({
           service: args.service,
-          amount: args.amount,
-          txHash,
-          spendId: record.id,
-          timestamp: record.timestamp,
-          policyCheck: { passed: true },
+          result: aiResult,
+          agent: agent.name,
+          remainingMs: getRemainingMs(agent),
         }, null, 2));
       }
 
@@ -278,7 +283,7 @@ export async function POST(request: NextRequest) {
         if (!agent) return err(body.id, -32002, `Agent not found: ${args.agentId}`);
         if (agent.ownerAddress !== address.toLowerCase()) return ownershipErr(body.id);
         const records = getSpendRecords(args.agentId);
-        return ok(body.id, JSON.stringify({ agent: agent.name, count: records.length, receipts: records }, null, 2));
+        return ok(body.id, JSON.stringify({ agent: agent.name, activations: records }, null, 2));
       }
 
       return err(body.id, -32601, `Unknown tool: ${name}`);

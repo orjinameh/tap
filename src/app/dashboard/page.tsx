@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import WalletButton from "@/components/WalletButton";
 
 const SERVICES = ["summarize", "translate", "code-review", "generate", "explain", "classify"];
@@ -9,64 +9,37 @@ interface Agent {
   id: string;
   name: string;
   address: string;
-  policy: {
-    maxPerTransaction: number;
-    maxPerDay: number;
-    maxPerWeek: number;
-    allowedServices: string[];
-    blockedServices: string[];
-  };
-  totalSpent: number;
+  services: string[];
   isActive: boolean;
+  activatedAt: string | null;
+  expiresAt: string | null;
+  remainingMs: number;
+  totalSpent: number;
   createdAt: string;
-  lastActive: string;
-  stats?: {
-    totalSpent: number;
-    todaySpent: number;
-    weekSpent: number;
-    totalTransactions: number;
-    todayTransactions: number;
-    blockedAttempts: number;
-  };
+  stats?: { totalSpent: number; totalTransactions: number };
 }
 
-interface Receipt {
-  id: string;
-  service: string;
-  amount: number;
-  txHash: string;
-  timestamp: string;
-  policyCheck: { passed: boolean; reason?: string };
+function formatMs(ms: number): string {
+  if (ms <= 0) return "Expired";
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return `${m}m ${s}s`;
+}
+
+function getPrice(serviceCount: number): number {
+  return Math.round(0.05 * serviceCount * 100) / 100;
 }
 
 export default function Dashboard() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newPolicy, setNewPolicy] = useState({
-    maxPerTransaction: 0.10,
-    maxPerDay: 1.00,
-    maxPerWeek: 5.00,
-  });
-  const [newAllowedServices, setNewAllowedServices] = useState<string[]>([]);
-  const [newBlockedServices, setNewBlockedServices] = useState<string[]>([]);
-  const [testService, setTestService] = useState("summarize");
-  const [testInput, setTestInput] = useState("");
-  const [testLoading, setTestLoading] = useState(false);
-  const [testResult, setTestResult] = useState<{ result: string; amount: number; txHash: string; service: string; serviceCount: number } | null>(null);
+  const [newServices, setNewServices] = useState<string[]>([]);
   const [address, setAddress] = useState<string | null>(null);
+  const [activating, setActivating] = useState(false);
 
-  useEffect(() => {
-    const saved = localStorage.getItem("tap_address");
-    if (saved) {
-      setAddress(saved);
-      loadAgents();
-    }
-  }, []);
-
-  const loadAgents = async () => {
+  const loadAgents = useCallback(async () => {
     try {
       const token = localStorage.getItem("tap_token");
       const res = await fetch("/api/agents", {
@@ -77,9 +50,41 @@ export default function Dashboard() {
         setAgents(data.agents);
       }
     } catch {}
-  };
+  }, []);
+
+  const selectAgent = useCallback(async (agent: Agent) => {
+    const token = localStorage.getItem("tap_token");
+    const res = await fetch(`/api/agents/${agent.id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setSelectedAgent(data);
+    }
+  }, []);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("tap_address");
+    if (saved) {
+      setAddress(saved);
+      loadAgents();
+    }
+  }, [loadAgents]);
+
+  useEffect(() => {
+    if (!selectedAgent) return;
+    const interval = setInterval(() => {
+      setSelectedAgent((prev) => {
+        if (!prev || !prev.expiresAt) return prev;
+        const remainingMs = Math.max(0, new Date(prev.expiresAt).getTime() - Date.now());
+        return { ...prev, remainingMs, isActive: remainingMs > 0 };
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [selectedAgent?.id]);
 
   const createAgent = async () => {
+    if (!newName || newServices.length === 0) return;
     const token = localStorage.getItem("tap_token");
     const res = await fetch("/api/agents", {
       method: "POST",
@@ -87,41 +92,36 @@ export default function Dashboard() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        name: newName,
-        policy: {
-          ...newPolicy,
-          allowedServices: newAllowedServices,
-          blockedServices: newBlockedServices,
-        },
-      }),
+      body: JSON.stringify({ name: newName, services: newServices }),
     });
     if (res.ok) {
       setShowCreate(false);
       setNewName("");
-      setNewAllowedServices([]);
-      setNewBlockedServices([]);
+      setNewServices([]);
       loadAgents();
     }
   };
 
-  const selectAgent = async (agent: Agent) => {
-    const token = localStorage.getItem("tap_token");
-    const [agentRes, receiptsRes] = await Promise.all([
-      fetch(`/api/agents/${agent.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-      fetch(`/api/agents/${agent.id}/receipts`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-    ]);
-    if (agentRes.ok) {
-      const data = await agentRes.json();
-      setSelectedAgent(data);
-    }
-    if (receiptsRes.ok) {
-      const data = await receiptsRes.json();
-      setReceipts(data.receipts);
+  const activateAgent = async (agentId: string) => {
+    setActivating(true);
+    try {
+      const token = localStorage.getItem("tap_token");
+      const res = await fetch(`/api/agents/${agentId}/pay`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        loadAgents();
+        selectAgent(selectedAgent!);
+      } else {
+        alert(`Activation failed: ${data.error}`);
+      }
+    } finally {
+      setActivating(false);
     }
   };
 
@@ -149,16 +149,10 @@ export default function Dashboard() {
         ) : (
           <>
             {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
                 <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Agents</p>
                 <p className="text-3xl font-bold text-white">{agents.length}</p>
-              </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Total Spent</p>
-                <p className="text-3xl font-bold text-white">
-                  ${agents.reduce((sum, a) => sum + a.totalSpent, 0).toFixed(2)}
-                </p>
               </div>
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
                 <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Active</p>
@@ -167,9 +161,9 @@ export default function Dashboard() {
                 </p>
               </div>
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Blocked</p>
-                <p className="text-3xl font-bold text-red-400">
-                  {agents.reduce((sum, a) => sum + (a.stats?.blockedAttempts || 0), 0)}
+                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Total Spent</p>
+                <p className="text-3xl font-bold text-white">
+                  ${agents.reduce((sum, a) => sum + a.totalSpent, 0).toFixed(2)}
                 </p>
               </div>
             </div>
@@ -188,7 +182,7 @@ export default function Dashboard() {
             {showCreate && (
               <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
                 <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md">
-                  <h3 className="text-lg font-semibold text-white mb-4">Create Agent Wallet</h3>
+                  <h3 className="text-lg font-semibold text-white mb-4">Create Agent</h3>
                   <div className="space-y-4">
                     <div>
                       <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-1">Agent Name</label>
@@ -199,50 +193,17 @@ export default function Dashboard() {
                         className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500"
                       />
                     </div>
-                    <div className="grid grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-1">Max/Tx</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={newPolicy.maxPerTransaction}
-                          onChange={(e) => setNewPolicy({ ...newPolicy, maxPerTransaction: +e.target.value })}
-                          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-1">Max/Day</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={newPolicy.maxPerDay}
-                          onChange={(e) => setNewPolicy({ ...newPolicy, maxPerDay: +e.target.value })}
-                          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-1">Max/Week</label>
-                        <input
-                          type="number"
-                          step="0.5"
-                          value={newPolicy.maxPerWeek}
-                          onChange={(e) => setNewPolicy({ ...newPolicy, maxPerWeek: +e.target.value })}
-                          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
-                        />
-                      </div>
-                    </div>
                     <div>
-                      <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-2">Allowed Services</label>
-                      <p className="text-xs text-zinc-600 mb-2">Leave empty to allow all services</p>
+                      <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-2">Services</label>
                       <div className="flex flex-wrap gap-2">
                         {SERVICES.map((s) => (
                           <button
                             key={s}
                             type="button"
-                            onClick={() => setNewAllowedServices((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s])}
+                            onClick={() => setNewServices((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s])}
                             className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
-                              newAllowedServices.includes(s)
-                                ? "border-emerald-500 bg-emerald-500/10 text-emerald-400"
+                              newServices.includes(s)
+                                ? "border-violet-500 bg-violet-500/10 text-violet-400"
                                 : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
                             }`}
                           >
@@ -250,36 +211,22 @@ export default function Dashboard() {
                           </button>
                         ))}
                       </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-zinc-500 uppercase tracking-wider mb-2">Blocked Services</label>
-                      <div className="flex flex-wrap gap-2">
-                        {SERVICES.map((s) => (
-                          <button
-                            key={s}
-                            type="button"
-                            onClick={() => setNewBlockedServices((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s])}
-                            className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
-                              newBlockedServices.includes(s)
-                                ? "border-red-500 bg-red-500/10 text-red-400"
-                                : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
-                            }`}
-                          >
-                            {s}
-                          </button>
-                        ))}
-                      </div>
+                      {newServices.length > 0 && (
+                        <p className="text-xs text-zinc-500 mt-2">
+                          Activation: ${getPrice(newServices.length)} for 30 min unlimited access
+                        </p>
+                      )}
                     </div>
                     <div className="flex gap-3">
                       <button
-                        onClick={() => setShowCreate(false)}
+                        onClick={() => { setShowCreate(false); setNewName(""); setNewServices([]); }}
                         className="flex-1 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm rounded-lg transition-colors"
                       >
                         Cancel
                       </button>
                       <button
                         onClick={createAgent}
-                        disabled={!newName}
+                        disabled={!newName || newServices.length === 0}
                         className="flex-1 py-2 bg-violet-600 hover:bg-violet-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white text-sm font-medium rounded-lg transition-colors"
                       >
                         Create
@@ -313,7 +260,7 @@ export default function Dashboard() {
                         className={`px-2 py-0.5 text-xs rounded-full ${
                           agent.isActive
                             ? "bg-emerald-500/10 text-emerald-400"
-                            : "bg-red-500/10 text-red-400"
+                            : "bg-zinc-700 text-zinc-500"
                         }`}
                       >
                         {agent.isActive ? "active" : "inactive"}
@@ -322,19 +269,16 @@ export default function Dashboard() {
                     <p className="text-xs text-zinc-500 font-mono mb-3">
                       {agent.address.slice(0, 10)}...{agent.address.slice(-6)}
                     </p>
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div>
-                        <p className="text-xs text-zinc-600">Spent</p>
-                        <p className="text-sm font-medium text-white">${agent.totalSpent.toFixed(2)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-zinc-600">Day Limit</p>
-                        <p className="text-sm font-medium text-white">${agent.policy.maxPerDay}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-zinc-600">Tx Limit</p>
-                        <p className="text-sm font-medium text-white">${agent.policy.maxPerTransaction}</p>
-                      </div>
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {agent.services.map((s) => (
+                        <span key={s} className="px-1.5 py-0.5 text-[10px] bg-zinc-800 text-zinc-400 rounded">{s}</span>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-zinc-600">${agent.totalSpent.toFixed(2)} spent</span>
+                      {agent.isActive && (
+                        <span className="text-xs text-emerald-400 font-mono">{formatMs(agent.remainingMs)}</span>
+                      )}
                     </div>
                   </button>
                 ))}
@@ -349,153 +293,45 @@ export default function Dashboard() {
                     <h3 className="text-lg font-semibold text-white">{selectedAgent.name}</h3>
                     <p className="text-xs text-zinc-500 font-mono">{selectedAgent.address}</p>
                   </div>
-                </div>
-
-                {/* Run Service */}
-                <div className="mb-6 bg-zinc-800 rounded-lg p-4">
-                  <h4 className="text-sm font-medium text-zinc-400 mb-3">Run Service</h4>
-                  <div className="flex gap-2 mb-3">
-                    <select
-                      value={testService}
-                      onChange={(e) => setTestService(e.target.value)}
-                      className="px-2 py-1.5 bg-zinc-900 border border-zinc-700 text-zinc-300 text-xs rounded-lg"
-                    >
-                      {SERVICES.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                    <input
-                      value={testInput}
-                      onChange={(e) => setTestInput(e.target.value)}
-                      placeholder={testService === "code-review" ? "Paste code here..." : "Enter text to process..."}
-                      className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500"
-                    />
-                    <button
-                      onClick={async () => {
-                        if (!testInput) return;
-                        setTestLoading(true);
-                        setTestResult(null);
-                        try {
-                          const token = localStorage.getItem("tap_token");
-                          const res = await fetch(`/api/agents/${selectedAgent!.id}/pay`, {
-                            method: "POST",
-                            headers: {
-                              "Content-Type": "application/json",
-                              Authorization: `Bearer ${token}`,
-                            },
-                            body: JSON.stringify({ service: testService, input: testInput }),
-                          });
-                          const data = await res.json();
-                          if (res.ok) {
-                            setTestResult({ result: data.result, amount: data.amount, txHash: data.txHash, service: data.service, serviceCount: data.serviceCount });
-                            loadAgents();
-                            selectAgent(selectedAgent!);
-                          } else {
-                            setTestResult(null);
-                            alert(`Failed: ${data.error}${data.reason ? " — " + data.reason : ""}`);
-                          }
-                        } finally {
-                          setTestLoading(false);
-                        }
-                      }}
-                      disabled={!testInput || testLoading}
-                      className="px-4 py-1.5 bg-violet-600 hover:bg-violet-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-xs font-medium rounded-lg transition-colors whitespace-nowrap"
-                    >
-                      {testLoading ? "Running..." : "Pay & Run"}
-                    </button>
-                  </div>
-                  {testResult && (
-                    <div className="bg-zinc-900 rounded-lg p-3 border border-zinc-700">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-zinc-500">
-                          ${testResult.amount} USDC · {testResult.service} · {testResult.serviceCount} service{testResult.serviceCount !== 1 ? "s" : ""} used
-                        </span>
-                        <span className="text-xs text-zinc-600 font-mono">{testResult.txHash.slice(0, 14)}...</span>
-                      </div>
-                      <p className="text-sm text-zinc-300 whitespace-pre-wrap">{testResult.result}</p>
+                  {selectedAgent.isActive ? (
+                    <div className="text-right">
+                      <p className="text-xs text-zinc-500 mb-1">Time remaining</p>
+                      <p className="text-2xl font-bold text-emerald-400 font-mono">{formatMs(selectedAgent.remainingMs)}</p>
                     </div>
+                  ) : (
+                    <button
+                      onClick={() => activateAgent(selectedAgent.id)}
+                      disabled={activating || selectedAgent.services.length === 0}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 text-white text-sm font-medium rounded-lg transition-colors"
+                    >
+                      {activating ? "Activating..." : `Buy Time — $${getPrice(selectedAgent.services.length)}`}
+                    </button>
                   )}
                 </div>
 
                 {/* Services */}
                 <div className="mb-6">
-                  <h4 className="text-sm font-medium text-zinc-400 mb-3">Service Access</h4>
-                  <div className="space-y-2">
-                    {selectedAgent.policy.allowedServices.length > 0 ? (
-                      <div>
-                        <p className="text-xs text-zinc-500 mb-1">Allowed</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedAgent.policy.allowedServices.map((s) => (
-                            <span key={s} className="px-2 py-0.5 text-xs bg-emerald-500/10 text-emerald-400 rounded-full">{s}</span>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-zinc-600">All services allowed</p>
-                    )}
-                    {selectedAgent.policy.blockedServices.length > 0 && (
-                      <div>
-                        <p className="text-xs text-zinc-500 mb-1">Blocked</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedAgent.policy.blockedServices.map((s) => (
-                            <span key={s} className="px-2 py-0.5 text-xs bg-red-500/10 text-red-400 rounded-full">{s}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                  <h4 className="text-sm font-medium text-zinc-400 mb-3">Services</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedAgent.services.map((s) => (
+                      <span key={s} className={`px-3 py-1 text-xs rounded-full ${
+                        selectedAgent.isActive
+                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                          : "bg-zinc-800 text-zinc-500 border border-zinc-700"
+                      }`}>
+                        {selectedAgent.isActive && "● "}{s}
+                      </span>
+                    ))}
                   </div>
                 </div>
 
-                {/* Policy */}
-                <div className="mb-6">
-                  <h4 className="text-sm font-medium text-zinc-400 mb-3">Spending Policy</h4>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="bg-zinc-800 rounded-lg p-3">
-                      <p className="text-xs text-zinc-500">Per Transaction</p>
-                      <p className="text-lg font-bold text-white">${selectedAgent.policy.maxPerTransaction}</p>
-                    </div>
-                    <div className="bg-zinc-800 rounded-lg p-3">
-                      <p className="text-xs text-zinc-500">Per Day</p>
-                      <p className="text-lg font-bold text-white">${selectedAgent.policy.maxPerDay}</p>
-                    </div>
-                    <div className="bg-zinc-800 rounded-lg p-3">
-                      <p className="text-xs text-zinc-500">Per Week</p>
-                      <p className="text-lg font-bold text-white">${selectedAgent.policy.maxPerWeek}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Receipts */}
+                {/* Activation History */}
                 <div>
-                  <h4 className="text-sm font-medium text-zinc-400 mb-3">Recent Transactions</h4>
-                  {receipts.length === 0 ? (
-                    <p className="text-sm text-zinc-600">No transactions yet</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {receipts.slice(-5).reverse().map((r) => (
-                        <div
-                          key={r.id}
-                          className="flex items-center justify-between bg-zinc-800 rounded-lg px-4 py-2"
-                        >
-                          <div className="flex items-center gap-3">
-                            <span
-                              className={`w-2 h-2 rounded-full ${
-                                r.policyCheck.passed ? "bg-emerald-500" : "bg-red-500"
-                              }`}
-                            />
-                            <span className="text-sm text-white font-mono">{r.service}</span>
-                            <span className="text-xs text-zinc-500">{r.txHash.slice(0, 10)}...</span>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-sm text-emerald-400">${r.amount}</span>
-                            <p className="text-xs text-zinc-600">
-                              {new Date(r.timestamp).toLocaleTimeString()}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <h4 className="text-sm font-medium text-zinc-400 mb-3">Purchase History</h4>
+                  <p className="text-xs text-zinc-600">
+                    Total spent: ${selectedAgent.totalSpent.toFixed(2)} ·
+                    Activated: {selectedAgent.activatedAt ? new Date(selectedAgent.activatedAt).toLocaleString() : "Never"}
+                  </p>
                 </div>
               </div>
             )}
